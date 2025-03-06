@@ -12,57 +12,49 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [favorites, setFavorites] = useState([]);
 
+  // Load favorite cities from localStorage on mount
   useEffect(() => {
     const savedFavorites = JSON.parse(localStorage.getItem("favorites")) || [];
     setFavorites(savedFavorites);
-    
-    // Fetch weather using geolocation
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          fetchWeatherByCoords(latitude, longitude);
-        },
-        (error) => {
-          console.warn("Geolocation denied or unavailable:", error);
-          setError("Location access denied. Please search for a city.");
-        }
-      );
-    } else {
-      setError("Geolocation is not supported by your browser.");
-    }
   }, []);
 
-  const fetchWeatherByCoords = async (lat, lon) => {
+  const fetchWeather = async (selectedCity = city) => {
+    if (!selectedCity.trim()) {
+      setError("Please enter a city name");
+      return;
+    }
+
     try {
       setError(null);
       setLoading(true);
-      
       const apiKey = process.env.NEXT_PUBLIC_WEATHER_API_KEY;
-      if (!apiKey) {
-        setError("Missing API Key. Please check your environment variables.");
-        setLoading(false);
-        return;
-      }
 
-      // Fetch current weather using coordinates
+      // Fetch current weather
       const weatherRes = await axios.get(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`
+        `https://api.openweathermap.org/data/2.5/weather?q=${selectedCity}&units=metric&appid=${apiKey}`
       );
       setWeather(weatherRes.data);
-      setCity(weatherRes.data.name); // Update city name
 
       // Fetch 5-day forecast
       const forecastRes = await axios.get(
-        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`
+        `https://api.openweathermap.org/data/2.5/forecast?q=${selectedCity}&units=metric&appid=${apiKey}`
       );
 
+      // Filter to show one forecast per day (12:00 PM)
       const dailyForecast = forecastRes.data.list.filter((reading) =>
         reading.dt_txt.includes("12:00:00")
       );
+
       setForecast(dailyForecast);
+
+      // Save to favorites if it's a new city
+      if (!favorites.includes(selectedCity)) {
+        const updatedFavorites = [...favorites, selectedCity];
+        setFavorites(updatedFavorites);
+        localStorage.setItem("favorites", JSON.stringify(updatedFavorites));
+      }
     } catch (err) {
-      setError("Failed to fetch weather for your location.");
+      setError("City not found or API error");
       setWeather(null);
       setForecast([]);
     } finally {
@@ -70,45 +62,17 @@ export default function Home() {
     }
   };
 
-  const fetchWeather = async () => {
-    if (!city.trim()) {
-      setError("Please enter a valid city name.");
-      return;
-    }
+  // Handle clicking a favorite city
+  const handleFavoriteClick = (favCity) => {
+    setCity(favCity);
+    fetchWeather(favCity);
+  };
 
-    try {
-      setError(null);
-      setLoading(true);
-      
-      const apiKey = process.env.NEXT_PUBLIC_WEATHER_API_KEY;
-      if (!apiKey) {
-        setError("Missing API Key. Please check your environment variables.");
-        setLoading(false);
-        return;
-      }
-
-      // Fetch weather by city name
-      const weatherRes = await axios.get(
-        `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${apiKey}`
-      );
-      setWeather(weatherRes.data);
-
-      // Fetch 5-day forecast
-      const forecastRes = await axios.get(
-        `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${apiKey}`
-      );
-
-      const dailyForecast = forecastRes.data.list.filter((reading) =>
-        reading.dt_txt.includes("12:00:00")
-      );
-      setForecast(dailyForecast);
-    } catch (err) {
-      setError("City not found or API error.");
-      setWeather(null);
-      setForecast([]);
-    } finally {
-      setLoading(false);
-    }
+  // Remove a city from favorites
+  const handleRemoveFavorite = (favCity) => {
+    const updatedFavorites = favorites.filter((city) => city !== favCity);
+    setFavorites(updatedFavorites);
+    localStorage.setItem("favorites", JSON.stringify(updatedFavorites));
   };
 
   return (
@@ -117,6 +81,31 @@ export default function Home() {
 
       {/* SearchBar Component */}
       <SearchBar city={city} setCity={setCity} fetchWeather={fetchWeather} />
+
+      {/* Favorite Cities List */}
+      {favorites.length > 0 && (
+        <div className="mt-4 p-4 bg-white bg-opacity-20 rounded-lg shadow-lg">
+          <h2 className="text-lg font-semibold mb-2">⭐ Favorite Cities</h2>
+          <div className="flex flex-wrap gap-2">
+            {favorites.map((fav, index) => (
+              <div key={index} className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleFavoriteClick(fav)}
+                  className="bg-white bg-opacity-30 px-3 py-1 rounded-md hover:bg-opacity-50 transition"
+                >
+                  {fav}
+                </button>
+                <button
+                  onClick={() => handleRemoveFavorite(fav)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  ❌
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Display Error Message */}
       {error && <p className="text-red-400 mt-2">{error}</p>}
